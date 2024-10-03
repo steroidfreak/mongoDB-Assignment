@@ -1,6 +1,7 @@
 // SETUP BEGINS
 const express = require("express");
 const cors = require("cors");
+const hbs = require("hbs");
 const { ObjectId } = require('mongodb');
 
 //enable express to read .env files
@@ -63,6 +64,12 @@ function verifyToken(req,res, next) {
 }
 
 let app = express();
+
+app.set("view engine","hbs");
+
+app.use(express.static("public"));
+
+app.use(express.urlencoded());
 
 // !! Enable processing JSON data
 app.use(express.json());
@@ -139,530 +146,536 @@ function generateTodayDate(){
 async function main() {
     const db = await connect(mongoUri, dbname);
 
-  // Routes
-app.get("/employers",verifyToken, async function (req, res) {
-    try {
+    // Routes
 
-        // this is the same as let tags = req.query.tags etc. etc.
-        // syntax: object destructuring
-        let { name, ic, contact_number, email_address, physical_address } = req.query;
+    app.get('/hbs', function(req,res){
+        // res.send can be used to send back HTML
+        res.render("index");
+    })
 
-        let criteria = {};
+    app.get("/employers",verifyToken, async function (req, res) {
+        try {
 
-        if (name) {
-            criteria["name"] = {
-                "$regex": name, "$options": "i"
+            // this is the same as let tags = req.query.tags etc. etc.
+            // syntax: object destructuring
+            let { name, ic, contact_number, email_address, physical_address } = req.query;
+
+            let criteria = {};
+
+            if (name) {
+                criteria["name"] = {
+                    "$regex": name, "$options": "i"
+                }
             }
-        }
 
-        if (ic) {
-            criteria["ic"] = {
-                "$regex": ic, "$options": "i"
+            if (ic) {
+                criteria["ic"] = {
+                    "$regex": ic, "$options": "i"
+                }
             }
-        }
-        if (contact_number) {
-            criteria["contact_number"] = {
-                "$regex": contact_number, "$options": "i"
+            if (contact_number) {
+                criteria["contact_number"] = {
+                    "$regex": contact_number, "$options": "i"
+                }
             }
-        }
-        if (email_address) {
-            criteria["email_address"] = {
-                "$regex": email_address, "$options": "i"
+            if (email_address) {
+                criteria["email_address"] = {
+                    "$regex": email_address, "$options": "i"
+                }
             }
-        }
-        if (physical_address) {
-            criteria["physical_address"] = {
-                "$regex": physical_address, "$options": "i"
+            if (physical_address) {
+                criteria["physical_address"] = {
+                    "$regex": physical_address, "$options": "i"
+                }
             }
-        }
-        
+            
 
-        // mongo shell: db.recipes.find({},{name:1, cuisine:1, tags:1, prepTime:1})
-        let employers = await db.collection("employers").find(criteria)
-            .project({
-                "name": 1,
-                "ic": 1,
-                "contact_number": 1,
-                "email_address": 1,
-                "physical_address": 1
-            }).toArray();
-        res.json({
-            'employers': employers
-        })
-    } catch (error) {
-        console.error("Error fetching employers:", error);
-        res.status(500);
-    }
-})
-
-app.get("/employers/:id", async function (req,res){
-    try {
-        const id = req.params.id;
-        
-        // First, fetch the recipe
-        const employer = await db.collection("employers").findOne(
-            { _id: new ObjectId(id) },
-            { projection: { 
-                name:1,
-                ic:1,
-                contact_number:1,
-                email_address:1,
-                physical_address:1
-
-             } 
-            }
-        );
-        
-        if (!employer) {
-            return res.status(404).json({ error: "employer not found" });
-        }
-        
-       
-
-        
-        res.json(employer);
-    } catch (error) {
-        console.error("Error fetching employer:", error);
-        res.status(500).json({ error: "Internal server error" });
-    }
-});
-
-app.post("/employers", async function(req,res){
-
-
-    try {
-        const{name, ic, phone_number, email_address, physical_address} = req.body;
-        if(!name || !ic || !phone_number || !physical_address){
-            return res.status(400).json({
-                error : "Missing required fields"
+            // mongo shell: db.recipes.find({},{name:1, cuisine:1, tags:1, prepTime:1})
+            let employers = await db.collection("employers").find(criteria)
+                .project({
+                    "name": 1,
+                    "ic": 1,
+                    "contact_number": 1,
+                    "email_address": 1,
+                    "physical_address": 1
+                }).toArray();
+            res.json({
+                'employers': employers
             })
+        } catch (error) {
+            console.error("Error fetching employers:", error);
+            res.status(500);
         }
-        //create new employer
-        const newEmployer = {
-            name,
-            ic,
-            phone_number,
-            email_address,
-            physical_address
-        }
+    })
 
-        //insert new employer
-        const result = await db.collection("employers").insertOne(newEmployer);
+    app.get("/employers/:id", async function (req,res){
+        try {
+            const id = req.params.id;
+            
+            // First, fetch the recipe
+            const employer = await db.collection("employers").findOne(
+                { _id: new ObjectId(id) },
+                { projection: { 
+                    name:1,
+                    ic:1,
+                    contact_number:1,
+                    email_address:1,
+                    physical_address:1
 
-        //send back success employer creation
-        res.status(201).json({
-            message:    "employer data created successfully",
-            result:     result.insertedId
-        }) 
-    } catch (error) {
-        console.error('Error creating employer data:', error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-})
-
-app.put("/employers/:id", async function(req,res){
-    try {
-        let id = req.params.id;
-        let {name, ic, phone_number, email_address, physical_address} = req.body;
-        
-        if(!name || !ic || !phone_number || !physical_address){
-            res.status(400).json({
-                "error" : "missing fields required"
-            })
-        }
-
-        let updatedEmployer = {
-            name,
-            ic,
-            phone_number,
-            email_address,
-            physical_address
-        }
-
-        let result = db.collection("employers").updateOne({
-            "_id": new ObjectId(id)
-            },
-        {
-            "$set": updatedEmployer
-        }
-        )
-
-        // if there is no matches, means no update took place
-        if (result.matchedCount == 0) {
-            return res.status(404).json({
-                "error": "Employer not found"
-            })
-        }
-
-        res.status(200).json({
-            "message": "Employer updated"
-        })
-
-        
-    } catch (error) {
-        console.error(e);
-        res.status(500);
-        
-    }
-})
-
-app.delete("/employers/:id", async function(req,res){
-    try {
-        let id = req.params.id;
-
-        let results = await db.collection('employers').deleteOne({
-            "_id": new ObjectId(id)
-        });
-
-        if (results.deletedCount == 0) {
-            return res.status(404).json({
-                "error": "Employer not found"
-            });
-        }
-
-        res.json({
-            "message": "Employer has been deleted successful"
-        })
-    } catch (error) {
-        console.error(e);
-        res.status(500);
-    }
-})
-
-app.get("/helpers", async function (req, res) {
-    try {
-
-        // this is the same as let tags = req.query.tags etc. etc.
-        // syntax: object destructuring
-
-        // name: 1,
-        // DOB: 1,
-        // age: 1,
-        // ethicGroup: 1,
-        // Nationality: 1,
-        // Skills:1
-        let { name, DOB, age, ethicGroup, Nationality, Skills } = req.query;
-
-        let criteria = {};
-
-        if (name) {
-            criteria["name"] = {
-                "$regex": name, "$options": "i"
+                } 
+                }
+            );
+            
+            if (!employer) {
+                return res.status(404).json({ error: "employer not found" });
             }
-        }
-
-        if (DOB) {
-            criteria["DOB"] = {
-                "$regex": DOB, "$options": "i"
-            }
-        }
-        if (age) {
-            criteria["age"] = {
-                "$regex": age, "$options": "i"
-            }
-        }
-        if (ethicGroup) {
-            criteria["ethnicGroup"] = {
-                "$regex": ethicGroup, "$options": "i"
-            }
-        }
-        if (Nationality) {
-            criteria["Nationality"] = {
-                "$regex": Nationality, "$options": "i"
-            }
-        }
-
-        if (Skills) {
-            criteria["Skills"] = Skills;
-        }
+            
         
 
-        // mongo shell: db.recipes.find({},{name:1, cuisine:1, tags:1, prepTime:1})
-        let helpers = await db.collection("helpers").find(criteria)
-            .project({
-                "name": 1,
-                "DOB": 1,
-                "age": 1,
-                "ethicGroup": 1,
-                "Nationality": 1,
-                "Skills" :1
-            }).toArray();
-        res.json({
-            'helpers': helpers
-        })
-    } catch (error) {
-        console.error("Error fetching helpers:", error);
-        res.status(500);
-    }
-})
-
-app.post("/helpers", async function(req,res){
-    try {
-        const{name, DOB, age, ethicGroup, Nationality, Skills} = req.body;
-
-        if(!name || !DOB || !ethicGroup || !Nationality){
-            return res.status(400).json({
-                error : "Missing required fields"
-            })
+            
+            res.json(employer);
+        } catch (error) {
+            console.error("Error fetching employer:", error);
+            res.status(500).json({ error: "Internal server error" });
         }
+    });
 
-        const newHelper = {
-            name,
-            DOB,
-            age,
-            ethicGroup,
-            Nationality,
-            Skills
-        };
-        console.log(newHelper);
+    app.post("/employers", async function(req,res){
 
-        //insert newHelper
-        const result = await db.collection("helpers").insertOne(newHelper);
 
-        //send back success creation notice of helper
-        res.status(201).json({
-            message: "helper data created successfully",
-            result: result.insertedId
-        })
-        
-    } catch (error) {
-        console.error('Error creating helper data:', error);
-        res.status(500).json({ error: 'Internal server error' });
-        
-    }
-    
+        try {
+            const{name, ic, phone_number, email_address, physical_address} = req.body;
+            if(!name || !ic || !phone_number || !physical_address){
+                return res.status(400).json({
+                    error : "Missing required fields"
+                })
+            }
+            //create new employer
+            const newEmployer = {
+                name,
+                ic,
+                phone_number,
+                email_address,
+                physical_address
+            }
 
-})
+            //insert new employer
+            const result = await db.collection("employers").insertOne(newEmployer);
 
-app.put("/helpers/:id", async function(req,res){
-    try {
-        let id = req.params.id;
-        let {name, DOB, age, ethicGroup, Nationality, Skills} = req.body;
-        
-        if(!name || !DOB || !ethicGroup || !Nationality){
-            res.status(400).json({
-                "error" : "missing fields required"
-            })
+            //send back success employer creation
+            res.status(201).json({
+                message:    "employer data created successfully",
+                result:     result.insertedId
+            }) 
+        } catch (error) {
+            console.error('Error creating employer data:', error);
+            res.status(500).json({ error: 'Internal server error' });
         }
+    })
 
-        let updatedHelper = {
-            name,
-            DOB,
-            age,
-            ethicGroup,
-            Nationality,
-            Skills
-        }
+    app.put("/employers/:id", async function(req,res){
+        try {
+            let id = req.params.id;
+            let {name, ic, phone_number, email_address, physical_address} = req.body;
+            
+            if(!name || !ic || !phone_number || !physical_address){
+                res.status(400).json({
+                    "error" : "missing fields required"
+                })
+            }
 
-        let result = await db.collection("helpers").updateOne({
-            "_id": new ObjectId(id)
-            },
-        {
-            "$set": updatedHelper
-        }
-        )
+            let updatedEmployer = {
+                name,
+                ic,
+                phone_number,
+                email_address,
+                physical_address
+            }
 
-        // if there is no match, no update took place
-        if (result.matchedCount == 0) {
-            return res.status(404).json({
-                "error": "Helper not found"
-            })
-        }
-
-        res.status(200).json({
-            "message": "Helper updated successfully"
-        })
-
-    } catch (error) {
-        console.error("Error updating helper:", error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-})
-
-app.delete("/helpers/:id", async function(req,res){
-    try {
-        let id = req.params.id;
-
-        let results = await db.collection('helpers').deleteOne({
-            "_id": new ObjectId(id)
-        });
-
-        if (results.deletedCount == 0) {
-            return res.status(404).json({
-                "error": "Helper not found"
-            });
-        }
-
-        res.json({
-            "message": "Helper has been deleted successfully"
-        })
-    } catch (error) {
-        console.error("Error deleting helper:", error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-})
-
-app.get("/contract", async function(req, res) {
-    try {
-        const contracts = await db.collection("contract").find({})
-            .project({
-                employer: 1,
-                helper: 1,
-                startDate: 1,
-                loanFee: 1
-            }).toArray();
-
-        res.json({
-            'contracts': contracts
-        });
-    } catch (error) {
-        console.error("Error fetching contracts:", error);
-        res.status(500).json({ error: "Internal server error" });
-    }
-});
-
-app.get("/contract/:id", async function(req, res) {
-    try {
-        const id = req.params.id;
-
-        const contract = await db.collection("contract").findOne(
-            { _id: new ObjectId(id) },
+            let result = db.collection("employers").updateOne({
+                "_id": new ObjectId(id)
+                },
             {
-                projection: {
+                "$set": updatedEmployer
+            }
+            )
+
+            // if there is no matches, means no update took place
+            if (result.matchedCount == 0) {
+                return res.status(404).json({
+                    "error": "Employer not found"
+                })
+            }
+
+            res.status(200).json({
+                "message": "Employer updated"
+            })
+
+            
+        } catch (error) {
+            console.error(e);
+            res.status(500);
+            
+        }
+    })
+
+    app.delete("/employers/:id", async function(req,res){
+        try {
+            let id = req.params.id;
+
+            let results = await db.collection('employers').deleteOne({
+                "_id": new ObjectId(id)
+            });
+
+            if (results.deletedCount == 0) {
+                return res.status(404).json({
+                    "error": "Employer not found"
+                });
+            }
+
+            res.json({
+                "message": "Employer has been deleted successful"
+            })
+        } catch (error) {
+            console.error(e);
+            res.status(500);
+        }
+    })
+
+    app.get("/helpers", async function (req, res) {
+        try {
+
+            // this is the same as let tags = req.query.tags etc. etc.
+            // syntax: object destructuring
+
+            // name: 1,
+            // DOB: 1,
+            // age: 1,
+            // ethicGroup: 1,
+            // Nationality: 1,
+            // Skills:1
+            let { name, DOB, age, ethicGroup, Nationality, Skills } = req.query;
+
+            let criteria = {};
+
+            if (name) {
+                criteria["name"] = {
+                    "$regex": name, "$options": "i"
+                }
+            }
+
+            if (DOB) {
+                criteria["DOB"] = {
+                    "$regex": DOB, "$options": "i"
+                }
+            }
+            if (age) {
+                criteria["age"] = {
+                    "$regex": age, "$options": "i"
+                }
+            }
+            if (ethicGroup) {
+                criteria["ethnicGroup"] = {
+                    "$regex": ethicGroup, "$options": "i"
+                }
+            }
+            if (Nationality) {
+                criteria["Nationality"] = {
+                    "$regex": Nationality, "$options": "i"
+                }
+            }
+
+            if (Skills) {
+                criteria["Skills"] = Skills;
+            }
+            
+
+            // mongo shell: db.recipes.find({},{name:1, cuisine:1, tags:1, prepTime:1})
+            let helpers = await db.collection("helpers").find(criteria)
+                .project({
+                    "name": 1,
+                    "DOB": 1,
+                    "age": 1,
+                    "ethicGroup": 1,
+                    "Nationality": 1,
+                    "Skills" :1
+                }).toArray();
+            res.json({
+                'helpers': helpers
+            })
+        } catch (error) {
+            console.error("Error fetching helpers:", error);
+            res.status(500);
+        }
+    })
+
+    app.post("/helpers", async function(req,res){
+        try {
+            const{name, DOB, age, ethicGroup, Nationality, Skills} = req.body;
+
+            if(!name || !DOB || !ethicGroup || !Nationality){
+                return res.status(400).json({
+                    error : "Missing required fields"
+                })
+            }
+
+            const newHelper = {
+                name,
+                DOB,
+                age,
+                ethicGroup,
+                Nationality,
+                Skills
+            };
+            console.log(newHelper);
+
+            //insert newHelper
+            const result = await db.collection("helpers").insertOne(newHelper);
+
+            //send back success creation notice of helper
+            res.status(201).json({
+                message: "helper data created successfully",
+                result: result.insertedId
+            })
+            
+        } catch (error) {
+            console.error('Error creating helper data:', error);
+            res.status(500).json({ error: 'Internal server error' });
+            
+        }
+        
+
+    })
+
+    app.put("/helpers/:id", async function(req,res){
+        try {
+            let id = req.params.id;
+            let {name, DOB, age, ethicGroup, Nationality, Skills} = req.body;
+            
+            if(!name || !DOB || !ethicGroup || !Nationality){
+                res.status(400).json({
+                    "error" : "missing fields required"
+                })
+            }
+
+            let updatedHelper = {
+                name,
+                DOB,
+                age,
+                ethicGroup,
+                Nationality,
+                Skills
+            }
+
+            let result = await db.collection("helpers").updateOne({
+                "_id": new ObjectId(id)
+                },
+            {
+                "$set": updatedHelper
+            }
+            )
+
+            // if there is no match, no update took place
+            if (result.matchedCount == 0) {
+                return res.status(404).json({
+                    "error": "Helper not found"
+                })
+            }
+
+            res.status(200).json({
+                "message": "Helper updated successfully"
+            })
+
+        } catch (error) {
+            console.error("Error updating helper:", error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    })
+
+    app.delete("/helpers/:id", async function(req,res){
+        try {
+            let id = req.params.id;
+
+            let results = await db.collection('helpers').deleteOne({
+                "_id": new ObjectId(id)
+            });
+
+            if (results.deletedCount == 0) {
+                return res.status(404).json({
+                    "error": "Helper not found"
+                });
+            }
+
+            res.json({
+                "message": "Helper has been deleted successfully"
+            })
+        } catch (error) {
+            console.error("Error deleting helper:", error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    })
+
+    app.get("/contract", async function(req, res) {
+        try {
+            const contracts = await db.collection("contract").find({})
+                .project({
                     employer: 1,
                     helper: 1,
                     startDate: 1,
                     loanFee: 1
+                }).toArray();
+
+            res.json({
+                'contracts': contracts
+            });
+        } catch (error) {
+            console.error("Error fetching contracts:", error);
+            res.status(500).json({ error: "Internal server error" });
+        }
+    });
+
+    app.get("/contract/:id", async function(req, res) {
+        try {
+            const id = req.params.id;
+
+            const contract = await db.collection("contract").findOne(
+                { _id: new ObjectId(id) },
+                {
+                    projection: {
+                        employer: 1,
+                        helper: 1,
+                        startDate: 1,
+                        loanFee: 1
+                    }
                 }
-            }
-        );
+            );
 
-        if (!contract) {
-            return res.status(404).json({ error: "Contract not found" });
+            if (!contract) {
+                return res.status(404).json({ error: "Contract not found" });
+            }
+
+            res.json(contract);
+        } catch (error) {
+            console.error("Error fetching contract:", error);
+            res.status(500).json({ error: "Internal server error" });
         }
+    });
 
-        res.json(contract);
-    } catch (error) {
-        console.error("Error fetching contract:", error);
-        res.status(500).json({ error: "Internal server error" });
-    }
-});
+    app.post("/contract", async function(req, res) {
+        try {
+            const { employerName, helperName } = req.body;
+            const salary = 480;
+            const months = 5;
 
-app.post("/contract", async function(req, res) {
-    try {
-        const { employerName, helperName } = req.body;
-        const salary = 480;
-        const months = 5;
+            const formattedDate = generateTodayDate();
+            const invoices = generateInvoices(formattedDate, months, salary);
 
-        const formattedDate = generateTodayDate();
-        const invoices = generateInvoices(formattedDate, months, salary);
-
-        // Find employer by name (case insensitive)
-        let employerData = await db.collection("employers").findOne({
-            "name": { "$regex": employerName, "$options": "i" }  // Case-insensitive regex search
-        }, {
-            projection: {
-                "_id": 1,
-                "name": 1,
-                "ic": 1,
-                "physical_address": 1,
-                "contact_number": 1
-            }
-        });
-
-        if (!employerData) {
-            return res.status(404).json({
-                "error": "Employer not found"
+            // Find employer by name (case insensitive)
+            let employerData = await db.collection("employers").findOne({
+                "name": { "$regex": employerName, "$options": "i" }  // Case-insensitive regex search
+            }, {
+                projection: {
+                    "_id": 1,
+                    "name": 1,
+                    "ic": 1,
+                    "physical_address": 1,
+                    "contact_number": 1
+                }
             });
-        }
 
-        // Find helper by name (case insensitive)
-        let helperData = await db.collection("helpers").findOne({
-            "name": { "$regex": helperName, "$options": "i" }  // Case-insensitive regex search
-        }, {
-            projection: {
-                "_id": 1,
-                "name": 1
+            if (!employerData) {
+                return res.status(404).json({
+                    "error": "Employer not found"
+                });
             }
-        });
 
-        if (!helperData) {
-            return res.status(404).json({
-                "error": "Helper not found"
+            // Find helper by name (case insensitive)
+            let helperData = await db.collection("helpers").findOne({
+                "name": { "$regex": helperName, "$options": "i" }  // Case-insensitive regex search
+            }, {
+                projection: {
+                    "_id": 1,
+                    "name": 1
+                }
             });
+
+            if (!helperData) {
+                return res.status(404).json({
+                    "error": "Helper not found"
+                });
+            }
+
+            // Combine employer and helper data
+            let contractData = {
+                employer: employerData,
+                helper: helperData,
+                startDate: formattedDate,
+                loanFee: invoices
+            };
+
+            const result = await db.collection("contract").insertOne(contractData);
+
+            // Send the contract data back as response
+            res.status(200).json({
+                "message": "Contract data setup successfully",
+                "result": result.insertedId
+            });
+
+        } catch (error) {
+            console.error("Error fetching contract data:", error);
+            res.status(500).json({ error: 'Internal server error' });
         }
+    });
 
-        // Combine employer and helper data
-        let contractData = {
-            employer: employerData,
-            helper: helperData,
-            startDate: formattedDate,
-            loanFee: invoices
-        };
+    //technically contract is created using employers and helpers data, so we should not use app.put in this case
+    // app.put("/contract/:id", async function(req, res) {
+    //     try {
+    //         const id = req.params.id;
+    //         const { employerName, helperName, startDate, loanFee } = req.body;
 
-        const result = await db.collection("contract").insertOne(contractData);
+    //         if (!employerName || !helperName || !startDate || !loanFee) {
+    //             return res.status(400).json({ error: "Missing required fields" });
+    //         }
 
-        // Send the contract data back as response
-        res.status(200).json({
-            "message": "Contract data setup successfully",
-            "result": result.insertedId
-        });
+    //         const updatedContract = {
+    //             employerName,
+    //             helperName,
+    //             startDate,
+    //             loanFee
+    //         };
 
-    } catch (error) {
-        console.error("Error fetching contract data:", error);
-        res.status(500).json({ error: 'Internal server error' });
-    }
-});
+    //         const result = await db.collection("contract").updateOne(
+    //             { _id: new ObjectId(id) },
+    //             { "$set": updatedContract }
+    //         );
 
-//technically contract is created using employers and helpers data, so we should not use app.put in this case
-// app.put("/contract/:id", async function(req, res) {
-//     try {
-//         const id = req.params.id;
-//         const { employerName, helperName, startDate, loanFee } = req.body;
+    //         if (result.matchedCount == 0) {
+    //             return res.status(404).json({ error: "Contract not found" });
+    //         }
 
-//         if (!employerName || !helperName || !startDate || !loanFee) {
-//             return res.status(400).json({ error: "Missing required fields" });
-//         }
+    //         res.status(200).json({ message: "Contract updated successfully" });
+    //     } catch (error) {
+    //         console.error("Error updating contract:", error);
+    //         res.status(500).json({ error: "Internal server error" });
+    //     }
+    // });
 
-//         const updatedContract = {
-//             employerName,
-//             helperName,
-//             startDate,
-//             loanFee
-//         };
+    app.delete("/contract/:id", async function(req, res) {
+        try {
+            const id = req.params.id;
 
-//         const result = await db.collection("contract").updateOne(
-//             { _id: new ObjectId(id) },
-//             { "$set": updatedContract }
-//         );
+            const result = await db.collection("contract").deleteOne({ _id: new ObjectId(id) });
 
-//         if (result.matchedCount == 0) {
-//             return res.status(404).json({ error: "Contract not found" });
-//         }
+            if (result.deletedCount == 0) {
+                return res.status(404).json({ error: "Contract not found" });
+            }
 
-//         res.status(200).json({ message: "Contract updated successfully" });
-//     } catch (error) {
-//         console.error("Error updating contract:", error);
-//         res.status(500).json({ error: "Internal server error" });
-//     }
-// });
-
-app.delete("/contract/:id", async function(req, res) {
-    try {
-        const id = req.params.id;
-
-        const result = await db.collection("contract").deleteOne({ _id: new ObjectId(id) });
-
-        if (result.deletedCount == 0) {
-            return res.status(404).json({ error: "Contract not found" });
+            res.json({ message: "Contract deleted successfully" });
+        } catch (error) {
+            console.error("Error deleting contract:", error);
+            res.status(500).json({ error: "Internal server error" });
         }
-
-        res.json({ message: "Contract deleted successfully" });
-    } catch (error) {
-        console.error("Error deleting contract:", error);
-        res.status(500).json({ error: "Internal server error" });
-    }
-});
+    });
 
 // route for user to sign up
     // the user must provide an email and password
