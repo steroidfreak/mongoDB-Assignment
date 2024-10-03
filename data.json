@@ -1,0 +1,13 @@
+{
+  "name" : "Ni Ni Tay",
+  "DOB"  : "24-12-2000",
+  "age" : "23",
+  "ethicGroup" : "Christian",
+  "Nationality" : "Philippines",
+  "Skills": {
+    "Care for elderly": "Yes",
+    "Care for children" :"No, but will learn"
+  }
+  
+
+}
