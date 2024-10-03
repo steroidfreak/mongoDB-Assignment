@@ -77,6 +77,42 @@ async function connect(uri, dbname) {
     return _db;
 }
 
+// Function to generate invoices
+function generateInvoices(startDate, months, salary) {
+    const invoices = [];
+    
+    // Array of month names in short form
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    
+    // Loop through the number of months
+    for (let i = 0; i < months; i++) {
+        // Clone the start date to avoid modifying the original date
+        let invoiceDate = new Date(startDate);
+        
+        // Add i months to the start date
+        invoiceDate.setMonth(invoiceDate.getMonth() + i);
+        
+        // Extract day, month, and year
+        const day = invoiceDate.getDate();
+        const month = monthNames[invoiceDate.getMonth()];
+        const year = invoiceDate.getFullYear();
+        
+        // Format the invoice date as "DD Mon YYYY"
+        const formattedDate = `${day} ${month} ${year}`;
+        
+        // Create the invoice object
+        const invoice = {
+            title: "Loan Fee",
+            date: formattedDate,
+            salary: salary
+        };
+        
+        // Add the invoice to the invoices array
+        invoices.push(invoice);
+    }
+    
+    return invoices;
+}
 // SETUP END
 async function main() {
     const db = await connect(mongoUri, dbname);
@@ -377,6 +413,186 @@ app.post("/helpers", async function(req,res){
     
 
 })
+
+app.put("/helpers/:id", async function(req,res){
+    try {
+        let id = req.params.id;
+        let {name, DOB, age, ethicGroup, Nationality, Skills} = req.body;
+        
+        if(!name || !DOB || !ethicGroup || !Nationality){
+            res.status(400).json({
+                "error" : "missing fields required"
+            })
+        }
+
+        let updatedHelper = {
+            name,
+            DOB,
+            age,
+            ethicGroup,
+            Nationality,
+            Skills
+        }
+
+        let result = await db.collection("helpers").updateOne({
+            "_id": new ObjectId(id)
+            },
+        {
+            "$set": updatedHelper
+        }
+        )
+
+        // if there is no match, no update took place
+        if (result.matchedCount == 0) {
+            return res.status(404).json({
+                "error": "Helper not found"
+            })
+        }
+
+        res.status(200).json({
+            "message": "Helper updated successfully"
+        })
+
+    } catch (error) {
+        console.error("Error updating helper:", error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+})
+
+app.delete("/helpers/:id", async function(req,res){
+    try {
+        let id = req.params.id;
+
+        let results = await db.collection('helpers').deleteOne({
+            "_id": new ObjectId(id)
+        });
+
+        if (results.deletedCount == 0) {
+            return res.status(404).json({
+                "error": "Helper not found"
+            });
+        }
+
+        res.json({
+            "message": "Helper has been deleted successfully"
+        })
+    } catch (error) {
+        console.error("Error deleting helper:", error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+})
+
+app.get("/contract", async function(req,res){
+    try {
+        res.json({
+            "message":"hello world"
+        })
+    } catch (error) {
+        console.error("Error fetching helpers:", error);
+        res.status(500);
+    }
+})
+// app.post("/contract", async function(req,res){
+//     try {
+//         const {employerName, helperName} = req.body;
+//         let employerData = await db.collection("employers").findOne({
+//             "name" : employerName
+//         }).project({
+//             "name" :1,
+//             "ic":1,
+//             "physical_address":1,
+//             "contact_number":1
+//         }).toArray();
+//         console.log(employerData);
+//     } catch (error) {
+//         console.error("Error fetching helpers:", error);
+//         res.status(500);
+//     }
+// })
+
+app.post("/contract", async function(req, res) {
+    try {
+        const { employerName, helperName } = req.body;
+        const salary = 480;
+        const months = 5;
+
+        // Create a new Date object
+        const today = new Date();
+
+        // Array of month names in short form
+        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+        // Get the current day, month, and year
+        const day = today.getDate();
+        const month = monthNames[today.getMonth()]; // Get month as short form
+        const year = today.getFullYear();
+
+       // Format the date as DD/Mon/YYYY
+        const formattedDate = `${day} ${month} ${year}`;
+        const invoices = generateInvoices(formattedDate, months, salary);
+        console.log(invoices);
+
+        console.log("Today's Date:", formattedDate);
+
+        // Find employer by name
+        let employerData = await db.collection("employers").findOne({
+            "name": employerName
+        }, {
+            projection: {
+                "_id" : 1,
+                "name": 1,
+                "ic": 1,
+                "physical_address": 1,
+                "contact_number": 1
+            }
+        });
+
+        if (!employerData) {
+            return res.status(404).json({
+                "error": "Employer not found"
+            });
+        }
+
+        // Find helper by name
+        let helperData = await db.collection("helpers").findOne({
+            "name": helperName
+        }, {
+            projection: {
+                "_id" : 1,
+                "name": 1
+                // "DOB": 1,
+                // "ethicGroup": 1,
+                // "Nationality": 1,
+                // "Skills": 1
+            }
+        });
+
+        if (!helperData) {
+            return res.status(404).json({
+                "error": "Helper not found"
+            });
+        }
+
+        // Combine employer and helper data
+        let contractData = {
+            employer: employerData,
+            helper: helperData,
+            startDate: formattedDate,
+            loanFee: invoices
+        };
+
+        // Send the contract data back as response
+        res.status(200).json({
+            "message": "Contract data fetched successfully",
+            "contract": contractData
+        });
+
+    } catch (error) {
+        console.error("Error fetching contract data:", error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
 
 // route for user to sign up
     // the user must provide an email and password
