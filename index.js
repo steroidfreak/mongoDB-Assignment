@@ -2,6 +2,7 @@
 const express = require("express");
 const cors = require("cors");
 const { ObjectId } = require('mongodb');
+
 //enable express to read .env files
 require("dotenv").config();
 const MongoClient = require("mongodb").MongoClient;
@@ -113,12 +114,32 @@ function generateInvoices(startDate, months, salary) {
     
     return invoices;
 }
+
+// Function to generate today date in dd mmm yyyy format which mmm is in alphabets
+function generateTodayDate(){
+    // Create a new Date object
+    const today = new Date();
+
+    // Array of month names in short form
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    // Get the current day, month, and year
+    const day = today.getDate();
+    const month = monthNames[today.getMonth()]; // Get month as short form
+    const year = today.getFullYear();
+
+   // Format the date as DD/Mon/YYYY
+    const formattedDate = `${day} ${month} ${year}`;
+
+    return formattedDate;
+
+}
+
 // SETUP END
 async function main() {
     const db = await connect(mongoUri, dbname);
 
   // Routes
-
 app.get("/employers",verifyToken, async function (req, res) {
     try {
 
@@ -177,7 +198,6 @@ app.get("/employers",verifyToken, async function (req, res) {
 app.get("/employers/:id", async function (req,res){
     try {
         const id = req.params.id;
-        console.log(id)
         
         // First, fetch the recipe
         const employer = await db.collection("employers").findOne(
@@ -482,33 +502,51 @@ app.delete("/helpers/:id", async function(req,res){
     }
 })
 
-app.get("/contract", async function(req,res){
+app.get("/contract", async function(req, res) {
     try {
+        const contracts = await db.collection("contract").find({})
+            .project({
+                employer: 1,
+                helper: 1,
+                startDate: 1,
+                loanFee: 1
+            }).toArray();
+
         res.json({
-            "message":"hello world"
-        })
+            'contracts': contracts
+        });
     } catch (error) {
-        console.error("Error fetching helpers:", error);
-        res.status(500);
+        console.error("Error fetching contracts:", error);
+        res.status(500).json({ error: "Internal server error" });
     }
-})
-// app.post("/contract", async function(req,res){
-//     try {
-//         const {employerName, helperName} = req.body;
-//         let employerData = await db.collection("employers").findOne({
-//             "name" : employerName
-//         }).project({
-//             "name" :1,
-//             "ic":1,
-//             "physical_address":1,
-//             "contact_number":1
-//         }).toArray();
-//         console.log(employerData);
-//     } catch (error) {
-//         console.error("Error fetching helpers:", error);
-//         res.status(500);
-//     }
-// })
+});
+
+app.get("/contract/:id", async function(req, res) {
+    try {
+        const id = req.params.id;
+
+        const contract = await db.collection("contract").findOne(
+            { _id: new ObjectId(id) },
+            {
+                projection: {
+                    employer: 1,
+                    helper: 1,
+                    startDate: 1,
+                    loanFee: 1
+                }
+            }
+        );
+
+        if (!contract) {
+            return res.status(404).json({ error: "Contract not found" });
+        }
+
+        res.json(contract);
+    } catch (error) {
+        console.error("Error fetching contract:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
 
 app.post("/contract", async function(req, res) {
     try {
@@ -516,30 +554,15 @@ app.post("/contract", async function(req, res) {
         const salary = 480;
         const months = 5;
 
-        // Create a new Date object
-        const today = new Date();
-
-        // Array of month names in short form
-        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-        // Get the current day, month, and year
-        const day = today.getDate();
-        const month = monthNames[today.getMonth()]; // Get month as short form
-        const year = today.getFullYear();
-
-       // Format the date as DD/Mon/YYYY
-        const formattedDate = `${day} ${month} ${year}`;
+        const formattedDate = generateTodayDate();
         const invoices = generateInvoices(formattedDate, months, salary);
-        console.log(invoices);
 
-        console.log("Today's Date:", formattedDate);
-
-        // Find employer by name
+        // Find employer by name (case insensitive)
         let employerData = await db.collection("employers").findOne({
-            "name": employerName
+            "name": { "$regex": employerName, "$options": "i" }  // Case-insensitive regex search
         }, {
             projection: {
-                "_id" : 1,
+                "_id": 1,
                 "name": 1,
                 "ic": 1,
                 "physical_address": 1,
@@ -553,17 +576,13 @@ app.post("/contract", async function(req, res) {
             });
         }
 
-        // Find helper by name
+        // Find helper by name (case insensitive)
         let helperData = await db.collection("helpers").findOne({
-            "name": helperName
+            "name": { "$regex": helperName, "$options": "i" }  // Case-insensitive regex search
         }, {
             projection: {
-                "_id" : 1,
+                "_id": 1,
                 "name": 1
-                // "DOB": 1,
-                // "ethicGroup": 1,
-                // "Nationality": 1,
-                // "Skills": 1
             }
         });
 
@@ -581,10 +600,12 @@ app.post("/contract", async function(req, res) {
             loanFee: invoices
         };
 
+        const result = await db.collection("contract").insertOne(contractData);
+
         // Send the contract data back as response
         res.status(200).json({
-            "message": "Contract data fetched successfully",
-            "contract": contractData
+            "message": "Contract data setup successfully",
+            "result": result.insertedId
         });
 
     } catch (error) {
@@ -593,6 +614,55 @@ app.post("/contract", async function(req, res) {
     }
 });
 
+//technically contract is created using employers and helpers data, so we should not use app.put in this case
+// app.put("/contract/:id", async function(req, res) {
+//     try {
+//         const id = req.params.id;
+//         const { employerName, helperName, startDate, loanFee } = req.body;
+
+//         if (!employerName || !helperName || !startDate || !loanFee) {
+//             return res.status(400).json({ error: "Missing required fields" });
+//         }
+
+//         const updatedContract = {
+//             employerName,
+//             helperName,
+//             startDate,
+//             loanFee
+//         };
+
+//         const result = await db.collection("contract").updateOne(
+//             { _id: new ObjectId(id) },
+//             { "$set": updatedContract }
+//         );
+
+//         if (result.matchedCount == 0) {
+//             return res.status(404).json({ error: "Contract not found" });
+//         }
+
+//         res.status(200).json({ message: "Contract updated successfully" });
+//     } catch (error) {
+//         console.error("Error updating contract:", error);
+//         res.status(500).json({ error: "Internal server error" });
+//     }
+// });
+
+app.delete("/contract/:id", async function(req, res) {
+    try {
+        const id = req.params.id;
+
+        const result = await db.collection("contract").deleteOne({ _id: new ObjectId(id) });
+
+        if (result.deletedCount == 0) {
+            return res.status(404).json({ error: "Contract not found" });
+        }
+
+        res.json({ message: "Contract deleted successfully" });
+    } catch (error) {
+        console.error("Error deleting contract:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
 
 // route for user to sign up
     // the user must provide an email and password
@@ -624,7 +694,6 @@ app.post("/contract", async function(req, res) {
             res.status(500);
         }
     })
-
 
     // the client is supposed to provide the email and password in req.body
     app.post('/login', async function(req,res){
@@ -673,92 +742,7 @@ app.post("/contract", async function(req, res) {
 
     })
 
-
-
-
 }
-
-
-// app.get("/recipes/:id", async (req, res) => {
-//     try {
-//         const id = req.params.id;
-        
-//         // First, fetch the recipe
-//         const recipe = await db.collection("recipes").findOne(
-//             { _id: new ObjectId(id) },
-//             { projection: { _id: 0 } }
-//         );
-        
-//         if (!recipe) {
-//             return res.status(404).json({ error: "Recipe not found" });
-//         }
-        
-       
-
-        
-//         res.json(recipe);
-//     } catch (error) {
-//         console.error("Error fetching recipe:", error);
-//         res.status(500).json({ error: "Internal server error" });
-//     }
-// });
-
-// app.post('/recipes', async (req, res) => {
-//     try {
-//         const { name, cuisine, prepTime, cookTime, servings, ingredients, instructions, tags } = req.body;
-
-//         // Basic validation
-//         if (!name || !cuisine || !ingredients || !instructions || !tags) {
-//             return res.status(400).json({ error: 'Missing required fields' });
-//         }
-
-//         // Fetch the cuisine document
-//         const cuisineDoc = await db.collection('cuisines').findOne({ name: cuisine });
-//         if (!cuisineDoc) {
-//             return res.status(400).json({ error: 'Invalid cuisine' });
-//         }
-
-//         // Fetch the tag documents
-//         const tagDocs = await db.collection('tags').find({ name: { $in: tags } }).toArray();
-//         if (tagDocs.length !== tags.length) {
-//             return res.status(400).json({ error: 'One or more invalid tags' });
-//         }
-
-//         // Create the new recipe object
-//         const newRecipe = {
-//             name,
-//             cuisine: {
-//                 _id: cuisineDoc._id,
-//                 name: cuisineDoc.name
-//             },
-//             prepTime,
-//             cookTime,
-//             servings,
-//             ingredients,
-//             instructions,
-//             tags: tagDocs.map(tag => ({
-//                 _id: tag._id,
-//                 name: tag.name
-//             }))
-//         };
-
-//         // Insert the new recipe into the database
-//         const result = await db.collection('recipes').insertOne(newRecipe);
-
-//         // Send back the created recipe
-//         res.status(201).json({
-//             message: 'Recipe created successfully',
-//             recipeId: result.insertedId
-//         });
-//     } catch (error) {
-//         console.error('Error creating recipe:', error);
-//         res.status(500).json({ error: 'Internal server error' });
-//     }
-// });
-
-
-
- 
 
 main();
 
